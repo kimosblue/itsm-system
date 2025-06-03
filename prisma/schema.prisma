@@ -1,0 +1,320 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  tickets        Ticket[]        @relation("TicketCreator")
+  assignedTickets Ticket[]       @relation("TicketAssignee")
+  comments       Comment[]
+  assets         Asset[]         @relation("AssetOwner")
+  managedAssets  Asset[]         @relation("AssetManager")
+  knowledgeArticles KnowledgeArticle[]
+  releases       Release[]
+  changeRequests ChangeRequest[]
+  approvals      Approval[]
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  AGENT
+  USER
+}
+
+// Ticket model
+model Ticket {
+  id          String      @id @default(cuid())
+  title       String
+  description String
+  status      TicketStatus @default(OPEN)
+  priority    Priority    @default(MEDIUM)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  dueDate     DateTime?
+
+  // Relations
+  creatorId   String
+  creator     User        @relation("TicketCreator", fields: [creatorId], references: [id])
+  assigneeId  String?
+  assignee    User?       @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  comments    Comment[]
+  assets      Asset[]
+  sla         SLA?        @relation(fields: [slaId], references: [id])
+  slaId       String?
+
+  // External integrations
+  externalId  String?
+  externalSystem ExternalSystem?
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Category model
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  tickets     Ticket[]
+}
+
+// Comment model
+model Comment {
+  id          String    @id @default(cuid())
+  content     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  ticketId    String
+  ticket      Ticket    @relation(fields: [ticketId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+}
+
+// Asset model
+model Asset {
+  id          String    @id @default(cuid())
+  name        String
+  type        AssetType
+  status      AssetStatus @default(ACTIVE)
+  serialNumber String?
+  purchaseDate DateTime?
+  warrantyEnd  DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  ownerId     String?
+  owner       User?     @relation("AssetOwner", fields: [ownerId], references: [id])
+  managerId   String?
+  manager     User?     @relation("AssetManager", fields: [managerId], references: [id])
+  tickets     Ticket[]
+}
+
+enum AssetType {
+  HARDWARE
+  SOFTWARE
+  SERVICE
+  OTHER
+}
+
+enum AssetStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+// Knowledge Base Article
+model KnowledgeArticle {
+  id          String    @id @default(cuid())
+  title       String
+  content     String
+  tags        String[]
+  published   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+}
+
+// SLA model
+model SLA {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  responseTime    Int       // in minutes
+  resolutionTime  Int       // in minutes
+  tickets         Ticket[]
+}
+
+// External System Integration
+model ExternalSystem {
+  id          String    @id @default(cuid())
+  name        ExternalSystemType
+  ticketId    String    @unique
+  ticket      Ticket    @relation(fields: [ticketId], references: [id])
+  externalId  String
+  metadata    Json?
+}
+
+enum ExternalSystemType {
+  AZURE_DEVOPS
+  GITHUB
+  JIRA
+}
+
+// Release model
+model Release {
+  id              String          @id @default(cuid())
+  name            String
+  version         String
+  description     String?
+  releaseDate     DateTime?
+  status          ReleaseStatus   @default(PLANNED)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  changeRequests  ChangeRequest[]
+  approvals       Approval[]      @relation("ReleaseApprovals")
+  createdById     String
+  createdBy       User            @relation(fields: [createdById], references: [id])
+}
+
+enum ReleaseStatus {
+  PLANNED
+  IN_DEVELOPMENT
+  READY_FOR_TESTING
+  TESTING
+  READY_FOR_DEPLOYMENT
+  DEPLOYING
+  DEPLOYED
+  CANCELLED
+}
+
+// Change Request model
+model ChangeRequest {
+  id              String          @id @default(cuid())
+  title           String
+  description     String?
+  status          CRStatus        @default(DRAFT)
+  priority        Priority
+  impact          ImpactLevel     @default(MEDIUM)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  releaseId       String
+  release         Release         @relation(fields: [releaseId], references: [id])
+  approvals       Approval[]      @relation("CRApprovals")
+  createdById     String
+  createdBy       User            @relation(fields: [createdById], references: [id])
+
+  // External links
+  jiraIssueId     String?
+  jiraIssueKey    String?
+  gitCommits      GitCommit[]
+  devOpsChanges   DevOpsChange[]
+}
+
+enum CRStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  IMPLEMENTED
+  CLOSED
+}
+
+enum ImpactLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Git Commit model
+model GitCommit {
+  id              String          @id @default(cuid())
+  commitHash      String
+  message         String
+  authorName      String
+  authorEmail     String
+  commitDate      DateTime
+  repository      String
+
+  // Relations
+  changeRequestId String
+  changeRequest   ChangeRequest   @relation(fields: [changeRequestId], references: [id])
+}
+
+// DevOps Change model
+model DevOpsChange {
+  id              String          @id @default(cuid())
+  changesetId     String
+  title           String
+  description     String?
+  authorName      String
+  changeDate      DateTime
+  project         String
+
+  // Relations
+  changeRequestId String
+  changeRequest   ChangeRequest   @relation(fields: [changeRequestId], references: [id])
+}
+
+// Approval model
+model Approval {
+  id              String          @id @default(cuid())
+  status          ApprovalStatus  @default(PENDING)
+  comments        String?
+  approvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  approverId      String?
+  approver        User?           @relation(fields: [approverId], references: [id])
+
+  // Polymorphic relation to either Release or ChangeRequest
+  releaseId       String?
+  release         Release?        @relation("ReleaseApprovals", fields: [releaseId], references: [id])
+  changeRequestId String?
+  changeRequest   ChangeRequest?  @relation("CRApprovals", fields: [changeRequestId], references: [id])
+
+  // Approval type
+  approvalType    ApprovalType
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalType {
+  BUSINESS
+  TECHNICAL
+  SECURITY
+  FINAL
+}
